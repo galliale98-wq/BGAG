@@ -303,7 +303,7 @@
       mv.getCell(r, 3).dataValidation = { type: 'list', allowBlank: true, formulae: ['Categorie'], showErrorMessage: true,
         errorTitle: 'Categoria non valida', error: "Scegli una categoria dall'elenco delle Impostazioni." };
     }
-    mv.autoFilter = `B4:H${lastMovRow}`;
+    mv.autoFilter = `B4:I${lastMovRow}`; // include la colonna ID: ordinando, gli ID seguono le righe
     mv.addConditionalFormatting({ ref: `H5:H${lastMovRow}`, rules: [{ type: 'expression', priority: 1,
       formulae: ['ISNUMBER(SEARCH("non trovata",$H5))'],
       style: { font: { bold: true, color: { argb: 'FF9C2B0E' } }, fill: { type: 'pattern', pattern: 'solid', bgColor: { argb: 'FFF9D5C7' } } } }] });

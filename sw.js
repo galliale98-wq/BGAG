@@ -1,5 +1,5 @@
 // Cache per uso offline. Quando aggiorni i file dell'app, aumenta il numero di VERSIONE.
-const VERSIONE = 'budget-v1';
+const VERSIONE = 'budget-v2';
 const FILES = ['./', 'index.html', 'app.js', 'core.js', 'exceljs.min.js', 'manifest.webmanifest', 'icon-180.png', 'icon-192.png', 'icon-512.png'];
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(VERSIONE).then((c) => c.addAll(FILES)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', (e) => {
