@@ -116,7 +116,7 @@
       for (const m of list) {
         const ent = Core.tipoOf(S, m.categoria) === 'Entrata';
         html += `<button class="item" data-id="${esc(m.id)}"><span class="d">${ddmm(m.data)}</span>
-          <span class="t"><div>${esc(m.descrizione || m.categoria)}</div>${m.descrizione ? `<small>${esc(m.categoria)}</small>` : ''}</span>
+          <span class="t"><div>${m.evid ? `<span class="hl">${esc(m.descrizione || m.categoria)}</span>` : esc(m.descrizione || m.categoria)}</div>${m.descrizione ? `<small>${esc(m.categoria)}</small>` : ''}</span>
           <span class="a ${ent ? 'in' : ''}">${ent ? '+' : '−'}${E(m.importo)}</span></button>`;
       }
       html += '</div></div>';
@@ -134,8 +134,8 @@
   const sheet = $('#sheet');
   $('#bAdd').onclick = () => openEntry();
   function openEntry(m) {
-    ent = m ? { id: m.id, tipo: Core.tipoOf(S, m.categoria) || 'Spesa', amt: amtFromNum(m.importo), cat: m.categoria, date: m.data, desc: m.descrizione || '' }
-            : { id: null, tipo: 'Spesa', amt: '', cat: null, date: today(), desc: '' };
+    ent = m ? { id: m.id, tipo: Core.tipoOf(S, m.categoria) || 'Spesa', amt: amtFromNum(m.importo), cat: m.categoria, date: m.data, desc: m.descrizione || '', evid: !!m.evid }
+            : { id: null, tipo: 'Spesa', amt: '', cat: null, date: today(), desc: '', evid: false };
     $('#shTitle').textContent = m ? 'Modifica movimento' : 'Nuovo movimento';
     $('#shDel').classList.toggle('hidden', !m);
     $('#desc').value = ent.desc;
@@ -164,6 +164,7 @@
     if (ent.cat && !names.includes(ent.cat) && !S.categorie.some((c) => c.nome === ent.cat)) names.unshift(ent.cat);
     $('#chips').innerHTML = names.map((n) => `<button class="chip ${n === ent.cat ? 'on' : ''}" data-c="${esc(n)}">${esc(n)}</button>`).join('');
     renderSugg(); renderDate(); validate();
+    $('#dEvid').setAttribute('aria-pressed', ent.evid ? 'true' : 'false');
   }
   function renderAmt() {
     const el = $('#amt');
@@ -213,6 +214,7 @@
   });
   $('#desc').addEventListener('input', (e) => { ent.desc = e.target.value; });
   $('#desc').addEventListener('keydown', (e) => { if (e.key === 'Enter') e.target.blur(); });
+  $('#dEvid').onclick = () => { ent.evid = !ent.evid; $('#dEvid').setAttribute('aria-pressed', ent.evid ? 'true' : 'false'); toast(ent.evid ? 'Sarà evidenziato in giallo nell\'Excel' : 'Evidenziazione tolta'); };
   $('#dOggi').onclick = () => { ent.date = today(); renderDate(); };
   $('#dIeri').onclick = () => { ent.date = yesterday(); renderDate(); };
   $('#dPick').addEventListener('change', (e) => { if (e.target.value) { ent.date = e.target.value; renderDate(); } });
@@ -233,9 +235,12 @@
     let msg;
     if (ent.id) {
       const m = S.movimenti.find((x) => x.id === ent.id);
-      Object.assign(m, { data: ent.date, categoria: ent.cat, descrizione: desc, importo: v }); msg = 'Movimento aggiornato';
+      // la descrizione non toccata resta identica, spazi compresi
+      Object.assign(m, { data: ent.date, categoria: ent.cat, descrizione: ent.desc === m.descrizione ? m.descrizione : desc, importo: v });
+      if (ent.evid) m.evid = true; else delete m.evid; msg = 'Movimento aggiornato';
     } else {
-      S.movimenti.push({ id: Core.uid(), data: ent.date, categoria: ent.cat, descrizione: desc, importo: v });
+      const nm = { id: Core.uid(), data: ent.date, categoria: ent.cat, descrizione: desc, importo: v };
+      if (ent.evid) nm.evid = true; S.movimenti.push(nm);
       msg = ent.tipo === 'Entrata' ? 'Entrata salvata' : 'Spesa salvata';
     }
     save(); closeEntry(); renderAll(); toast(`${msg}: ${E(v)}`);
@@ -280,8 +285,9 @@
     const ph = String(Core.round2(d)).replace('.', ',');
     const any = Object.keys(o).length > 0;
     $('#ovBody').innerHTML = `<div class="months">${Core.MESI_BREVI.map((mb, i) => {
-      const v = o[i + 1]; const set = v !== undefined && v !== null && v !== '';
-      return `<label>${mb}<input data-m="${i + 1}" inputmode="decimal" class="${set ? 'set' : ''}" placeholder="${ph}" value="${set ? String(v).replace('.', ',') : ''}"></label>`;
+      const set = Object.prototype.hasOwnProperty.call(o, i + 1), v = o[i + 1];
+      const shown = !set ? '' : v === null || v === '' ? '0' : String(v).replace('.', ',');
+      return `<label>${mb}<input data-m="${i + 1}" inputmode="decimal" class="${set ? 'set' : ''}" placeholder="${ph}" value="${shown}"></label>`;
     }).join('')}</div>${any ? '<button class="addrow" data-act="clear">Usa il budget standard per tutti i mesi</button>' : ''}`;
   }
 
@@ -354,7 +360,12 @@
   };
 
   /* ---------- export ---------- */
-  let pending = null;
+  let pending = null, tplCache = null;
+  async function getTemplate() {
+    if (!tplCache) { const r = await fetch('template.xlsx'); if (!r.ok) throw new Error('Stampo Excel non trovato: carica template.xlsx insieme agli altri file.'); tplCache = await r.arrayBuffer(); }
+    return tplCache;
+  }
+  setTimeout(() => getTemplate().catch(() => {}), 1500);
   const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
   function markExported() { S.lastExport = new Date().toISOString(); save(); renderSet(); renderMese(); toast('Excel esportato'); }
   async function deliver(file) {
@@ -372,12 +383,12 @@
       try { await deliver(f); markExported(); } catch (e) { if (e.name !== 'AbortError') toast('Salvataggio non riuscito: ' + e.message); }
       return;
     }
-    if (!window.ExcelJS) { toast('Il modulo Excel si sta ancora caricando: riprova tra un attimo.'); return; }
+    if (!window.JSZip) { toast('Il modulo Excel si sta ancora caricando: riprova tra un attimo.'); return; }
     btn.disabled = true; btn.textContent = 'Preparo il file…';
     let file;
     try {
-      const buf = await Core.buildWorkbook(ExcelJS, S).xlsx.writeBuffer();
-      file = new File([buf], `Budget_Personale_${today()}.xlsx`, { type: XLSX_TYPE });
+      const bytes = await Core.buildFromTemplate(JSZip, await getTemplate(), S);
+      file = new File([bytes], `Budget_Personale_${today()}.xlsx`, { type: XLSX_TYPE });
     } catch (e) { toast(e.message || 'Creazione del file non riuscita.'); btn.disabled = false; btn.textContent = 'Esporta Excel'; return; }
     btn.disabled = false; btn.textContent = 'Esporta Excel';
     try { await deliver(file); markExported(); }

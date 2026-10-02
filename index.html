@@ -158,6 +158,10 @@ h2{font-size:15px;font-weight:600;color:var(--muted);margin:30px 0 10px}
 .datebtn{position:relative;height:40px;padding:0 12px;border-radius:12px;background:var(--card);border:1px solid var(--line);font-size:15px;white-space:nowrap;display:flex;align-items:center}
 .datebtn.on{border-color:var(--ink);font-weight:600}
 .datebtn input{position:absolute;inset:0;opacity:0;width:100%;height:100%;font-size:16px}
+.hlbtn{width:40px;height:40px;flex:none;border-radius:12px;border:1px solid var(--line);background:var(--card);display:flex;align-items:center;justify-content:center;color:var(--muted)}
+.hlbtn svg{width:20px;height:20px}
+.hlbtn[aria-pressed="true"]{background:#FFE45C;border-color:#E2C21E;color:#3A3200}
+.hl{background:#FFE45C;color:#2A2500;border-radius:4px;padding:0 3px;margin:0 -3px}
 .desc{flex:1;min-width:0;height:40px;border-radius:12px;border:1px solid var(--line);background:var(--card);padding:0 12px;font-size:16px}
 .pad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:auto;padding-top:14px}
 .pad button{height:54px;border-radius:14px;background:var(--card);font-family:var(--num);font-size:26px;font-weight:500}
@@ -175,6 +179,7 @@ h2{font-size:15px;font-weight:600;color:var(--muted);margin:30px 0 10px}
 .toast{position:fixed;left:50%;bottom:calc(var(--tabh) + 24px + env(safe-area-inset-bottom,0px));transform:translate(-50%,20px);opacity:0;z-index:20;
   background:var(--ink);color:var(--paper);padding:11px 18px;border-radius:22px;font-size:15px;font-weight:500;transition:.25s;pointer-events:none;max-width:88vw;text-align:center}
 .toast.show{opacity:1;transform:translate(-50%,0)}
+.sheet.open ~ .toast{bottom:auto;top:calc(env(safe-area-inset-top,0px) + 58px)}
 @media (prefers-reduced-motion: reduce){ .sheet,.sheet.open,.toast,.switch,.switch::after{transition:none} }
 </style>
 </head>
@@ -199,7 +204,7 @@ h2{font-size:15px;font-weight:600;color:var(--muted);margin:30px 0 10px}
   <!-- EXCEL -->
   <section class="view" id="v-xls" aria-label="Excel">
     <h2 style="margin-top:12px">Esporta</h2>
-    <p class="hint" style="margin:0 2px 12px">Crea un file Excel con Movimenti, Impostazioni, Budget, Riepilogo e Annuale, con tutte le formule. Puoi salvarlo in File, su OneDrive o mandarlo per mail.</p>
+    <p class="hint" style="margin:0 2px 12px">Crea il tuo file Budget_Personale con i dati aggiornati: stessi fogli, formule, colori, grafico e istruzioni. Puoi salvarlo in File, su OneDrive o mandarlo per mail.</p>
     <button class="btn primary" id="bExport">Esporta Excel</button>
     <p class="hint" id="lastExp"></p>
     <h2>Importa</h2>
@@ -256,7 +261,7 @@ h2{font-size:15px;font-weight:600;color:var(--muted);margin:30px 0 10px}
       <button class="datebtn" id="dIeri">Ieri</button>
       <label class="datebtn" id="dAltra"><span id="dAltraTxt">Altra data</span><input type="date" id="dPick" aria-label="Scegli la data"></label>
     </div>
-    <div class="meta"><input class="desc" id="desc" placeholder="Descrizione (facoltativa)" autocomplete="off" enterkeyhint="done"></div>
+    <div class="meta"><input class="desc" id="desc" placeholder="Descrizione (facoltativa)" autocomplete="off" enterkeyhint="done"><button class="hlbtn" id="dEvid" aria-pressed="false" aria-label="Evidenzia in giallo nell'Excel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l4 4-9 9H6v-4z"/><path d="M4 21h16"/></svg></button></div>
     <div class="pad" id="pad">
       <button>1</button><button>2</button><button>3</button>
       <button>4</button><button>5</button><button>6</button>
@@ -281,6 +286,7 @@ h2{font-size:15px;font-weight:600;color:var(--muted);margin:30px 0 10px}
 <div class="toast" id="toast" role="status"></div>
 
 <script src="exceljs.min.js" defer></script>
+<script src="jszip.min.js" defer></script>
 <script src="core.js"></script>
 <script src="app.js"></script>
 </body>
