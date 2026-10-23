@@ -152,11 +152,11 @@ h2{font-size:15px;font-weight:600;color:var(--muted);margin:30px 0 10px}
 .amount{text-align:center;font-family:var(--num);font-variant-numeric:tabular-nums;font-weight:700;font-size:64px;letter-spacing:-2px;line-height:1;white-space:nowrap;overflow:hidden}
 .amount .ph{color:var(--line)}
 .amount small{font-size:34px;font-weight:600;color:var(--muted);letter-spacing:0;margin-left:6px}
-.chips{display:grid;grid-auto-flow:column;grid-template-rows:repeat(2,auto);gap:8px;overflow-x:auto;scrollbar-width:none;padding:2px 2px 4px;margin:0 -16px;padding-left:16px;padding-right:16px;scroll-padding:16px}
+.chips{display:grid;grid-auto-flow:column;grid-template-rows:repeat(2,auto);gap:8px;overflow-x:auto;overflow-y:hidden;touch-action:pan-x;overscroll-behavior:contain;scrollbar-width:none;padding:2px 2px 4px;margin:0 -16px;padding-left:16px;padding-right:16px;scroll-padding:16px}
 .chips::-webkit-scrollbar{display:none}
 .chip{height:38px;padding:0 14px;border-radius:19px;background:var(--card);border:1px solid var(--line);white-space:nowrap;font-size:15px}
 .chip.on{background:var(--ink);color:var(--paper);border-color:var(--ink)}
-.sugg{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;min-height:30px;margin:10px -16px 0;padding:0 16px}
+.sugg{display:flex;gap:6px;overflow-x:auto;overflow-y:hidden;touch-action:pan-x;overscroll-behavior:contain;scrollbar-width:none;min-height:30px;margin:10px -16px 0;padding:0 16px}
 .sugg::-webkit-scrollbar{display:none}
 .sugg button{height:30px;padding:0 11px;border-radius:15px;background:var(--wash);font-size:14px;white-space:nowrap;color:var(--ink)}
 .meta{display:flex;gap:8px;margin-top:12px;align-items:center}
@@ -243,7 +243,7 @@ h2{font-size:15px;font-weight:600;color:var(--muted);margin:30px 0 10px}
     <h2>Dati</h2>
     <div class="stack"><button class="btn danger" id="bReset">Cancella tutti i dati dell'app</button></div>
     <p class="hint">I dati restano solo su questo iPhone, dentro l'app. Esporta l'Excel ogni tanto dalla scheda Excel: è anche il tuo backup.</p>
-    <p class="hint" style="margin-top:18px">Versione 4</p>
+    <p class="hint" style="margin-top:18px">Versione 5</p>
   </section>
 </main>
 
