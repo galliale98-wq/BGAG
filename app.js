@@ -31,7 +31,12 @@
 
   /* ---------- navigazione ---------- */
   const now = new Date();
-  let cur = { y: now.getFullYear(), m: now.getMonth() + 1 };
+  let cur = { y: now.getFullYear(), m: now.getMonth() + 1 }, ytd = false;
+  document.querySelectorAll('.period button').forEach((b) => b.addEventListener('click', () => {
+    ytd = b.dataset.p === 'y';
+    document.querySelectorAll('.period button').forEach((x) => x.classList.toggle('on', x === b));
+    renderMese();
+  }));
   document.querySelectorAll('.tab').forEach((b) => b.addEventListener('click', () => show(b.dataset.v)));
   function show(id) {
     document.querySelectorAll('.view').forEach((v) => v.classList.toggle('on', v.id === id));
@@ -45,14 +50,15 @@
   function daysSince(isoStr) { return isoStr ? Math.floor((Date.now() - new Date(isoStr).getTime()) / 864e5) : null; }
 
   function renderMese() {
-    $('#mLabel').textContent = `${Core.MESI[cur.m - 1]} ${cur.y}`;
+    $('#mLabel').textContent = ytd ? (cur.m === 1 ? `Gennaio ${cur.y}` : `Gennaio–${Core.MESI[cur.m - 1]} ${cur.y}`) : `${Core.MESI[cur.m - 1]} ${cur.y}`;
     const body = $('#meseBody');
     if (!S.movimenti.length) {
       body.innerHTML = `<div class="empty"><p>Nessun movimento registrato. Se hai già il file Excel del budget, importalo: categorie, budget e movimenti arrivano tutti insieme.</p>
         <div class="stack"><button class="btn primary" data-go="import">Importa da Excel</button><button class="btn secondary" data-go="add">Aggiungi il primo movimento</button></div></div>`;
       return;
     }
-    const st = Core.monthStats(S, cur.y, cur.m);
+    const st = ytd ? Core.periodStats(S, cur.y, 1, cur.m) : Core.monthStats(S, cur.y, cur.m);
+    const perTxt = ytd ? 'da inizio anno' : 'nel mese';
     const prev = st.uscitePrev, eff = st.usciteEff, res = Core.round2(prev - eff);
     const pct = prev > 0 ? eff / prev : null;
     const gcls = pct === null ? '' : pct > 1 ? 'over' : pct >= 0.9 ? 'warn' : '';
@@ -60,11 +66,11 @@
     if (prev > 0) {
       hero = `<div class="cap">${res >= 0 ? 'Puoi ancora spendere' : 'Sei oltre il budget di'}</div>
         <div class="big ${res < 0 ? 'neg' : ''}">${E(Math.abs(res))}</div>
-        <div class="gauge ${gcls}"><i style="width:${Math.min(100, (pct || 0) * 100).toFixed(1)}%"></i></div>
-        <div class="sub">Spesi <b class="num">${E(eff)}</b> su <span class="num">${E(prev)}</span> di budget</div>`;
+        <div class="gauge ${gcls}"><i style="width:${Math.max(0, Math.min(100, (pct || 0) * 100)).toFixed(1)}%"></i></div>
+        <div class="sub">Spesi <b class="num">${E(eff)}</b> su <span class="num">${E(prev)}</span> di budget ${perTxt}</div>`;
     } else {
-      hero = `<div class="cap">Speso nel mese</div><div class="big">${E(eff)}</div>
-        <div class="sub">Nessun budget uscite per questo mese</div>`;
+      hero = `<div class="cap">Speso ${perTxt}</div><div class="big">${E(eff)}</div>
+        <div class="sub">Nessun budget uscite per ${ytd ? 'questo periodo' : 'questo mese'}</div>`;
     }
     const risp = Core.round2(st.entrateEff - st.usciteEff);
     let html = `<div class="hero">${hero}</div>
@@ -80,7 +86,7 @@
       const flag = r.tipo === 'Spesa' && cls === 'over' ? '<span class="flag over">Sforato</span>' : cls === 'warn' ? '<span class="flag warn">Quasi al limite</span>' : '';
       return `<button class="cat" style="display:block;width:100%;text-align:left" data-cat="${esc(r.nome)}">
         <div class="row"><span class="n">${esc(r.nome)}${flag}</span><span class="v"><b>${E(r.effettivo)}</b> / ${E(r.budget)}</span></div>
-        <div class="gauge ${cls}"><i style="width:${Math.min(100, (p || (r.effettivo > 0 ? 1 : 0)) * 100).toFixed(1)}%"></i></div></button>`;
+        <div class="gauge ${cls}"><i style="width:${Math.max(0, Math.min(100, (p === null ? (r.effettivo > 0 ? 1 : 0) : p) * 100)).toFixed(1)}%"></i></div></button>`;
     };
     const sp = st.righe.filter((r) => r.tipo === 'Spesa' && (r.budget > 0 || r.effettivo > 0));
     const en = st.righe.filter((r) => r.tipo === 'Entrata' && (r.budget > 0 || r.effettivo > 0));
@@ -117,7 +123,7 @@
         const ent = Core.tipoOf(S, m.categoria) === 'Entrata';
         html += `<button class="item" data-id="${esc(m.id)}"><span class="d">${ddmm(m.data)}</span>
           <span class="t"><div>${m.evid ? `<span class="hl">${esc(m.descrizione || m.categoria)}</span>` : esc(m.descrizione || m.categoria)}</div>${m.descrizione ? `<small>${esc(m.categoria)}</small>` : ''}</span>
-          <span class="a ${ent ? 'in' : ''}">${ent ? '+' : '−'}${E(m.importo)}</span></button>`;
+          ${(() => { const w = ent ? m.importo : -m.importo; return `<span class="a ${w > 0 ? 'in' : ''}">${w >= 0 ? '+' : '−'}${E(Math.abs(m.importo))}</span>`; })()}</button>`;
       }
       html += '</div></div>';
     }
@@ -134,8 +140,8 @@
   const sheet = $('#sheet');
   $('#bAdd').onclick = () => openEntry();
   function openEntry(m) {
-    ent = m ? { id: m.id, tipo: Core.tipoOf(S, m.categoria) || 'Spesa', amt: amtFromNum(m.importo), cat: m.categoria, date: m.data, desc: m.descrizione || '', evid: !!m.evid }
-            : { id: null, tipo: 'Spesa', amt: '', cat: null, date: today(), desc: '', evid: false };
+    ent = m ? { id: m.id, tipo: Core.tipoOf(S, m.categoria) || 'Spesa', amt: amtFromNum(Math.abs(m.importo)), neg: m.importo < 0, cat: m.categoria, date: m.data, desc: m.descrizione || '', evid: !!m.evid }
+            : { id: null, tipo: 'Spesa', amt: '', neg: false, cat: null, date: today(), desc: '', evid: false };
     $('#shTitle').textContent = m ? 'Modifica movimento' : 'Nuovo movimento';
     $('#shDel').classList.toggle('hidden', !m);
     $('#desc').value = ent.desc;
@@ -167,11 +173,13 @@
     $('#dEvid').setAttribute('aria-pressed', ent.evid ? 'true' : 'false');
   }
   function renderAmt() {
-    const el = $('#amt');
-    if (!ent.amt) { el.innerHTML = '<span class="ph">0</span><small>€</small>'; return; }
+    const el = $('#amt'), sg = ent.neg ? '−' : '';
+    $('#bSign').setAttribute('aria-pressed', ent.neg ? 'true' : 'false');
+    $('#negHint').textContent = !ent.neg ? '' : ent.tipo === 'Entrata' ? 'Negativo: riduce le entrate della categoria' : 'Negativo: rientro, riduce le uscite della categoria';
+    if (!ent.amt) { el.innerHTML = `<span class="ph">${sg}0</span><small>€</small>`; return; }
     const [i, d] = ent.amt.split(',');
     const intTxt = Number(i || '0').toLocaleString('it-IT');
-    el.innerHTML = `${intTxt}${ent.amt.includes(',') ? ',' + d : ''}<small>€</small>`;
+    el.innerHTML = `${sg}${intTxt}${ent.amt.includes(',') ? ',' + d : ''}<small>€</small>`;
     el.style.fontSize = ent.amt.length > 9 ? '48px' : '';
   }
   function renderSugg() {
@@ -200,6 +208,7 @@
     const b = $('#shSave'); b.disabled = !ok;
     b.textContent = ent.id ? 'Salva modifiche' : ent.tipo === 'Entrata' ? 'Salva entrata' : 'Salva spesa';
   }
+  $('#bSign').onclick = () => { ent.neg = !ent.neg; renderAmt(); };
   $('#tSpesa').onclick = () => { if (ent.tipo !== 'Spesa') { ent.tipo = 'Spesa'; ent.cat = null; renderEntry(); } };
   $('#tEntrata').onclick = () => { if (ent.tipo !== 'Entrata') { ent.tipo = 'Entrata'; ent.cat = null; renderEntry(); } };
   $('#chips').addEventListener('click', (e) => {
@@ -230,7 +239,8 @@
     ent.amt = a; renderAmt(); validate();
   });
   $('#shSave').onclick = () => {
-    const v = Core.round2(amtValue()); if (!(v > 0) || !ent.cat) return;
+    const abs = Core.round2(amtValue()); if (!(abs > 0) || !ent.cat) return;
+    const v = ent.neg ? -abs : abs;
     const desc = (ent.desc || '').trim();
     let msg;
     if (ent.id) {

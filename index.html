@@ -144,7 +144,12 @@ h2{font-size:15px;font-weight:600;color:var(--muted);margin:30px 0 10px}
 .seg{display:grid;grid-template-columns:1fr 1fr;background:var(--wash);border-radius:12px;padding:3px;height:40px;max-width:260px;width:100%;margin:2px auto 0}
 .seg button{border-radius:9px;font-size:15px;font-weight:500;color:var(--muted)}
 .seg button.on{background:var(--card);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.08)}
-.amount{text-align:center;font-family:var(--num);font-variant-numeric:tabular-nums;font-weight:700;font-size:64px;letter-spacing:-2px;line-height:1;margin:18px 0 16px;white-space:nowrap;overflow:hidden}
+.amtrow{display:grid;grid-template-columns:48px minmax(0,1fr) 48px;align-items:center;margin:18px 0 6px}
+.sign{width:44px;height:44px;border-radius:22px;border:1px solid var(--line);background:var(--card);font-family:var(--num);font-size:26px;font-weight:600;color:var(--muted);line-height:1}
+.sign[aria-pressed="true"]{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.neghint{margin:0 0 10px;min-height:18px;text-align:center;font-size:13px;color:var(--muted)}
+.period{margin:-6px auto 20px}
+.amount{text-align:center;font-family:var(--num);font-variant-numeric:tabular-nums;font-weight:700;font-size:64px;letter-spacing:-2px;line-height:1;white-space:nowrap;overflow:hidden}
 .amount .ph{color:var(--line)}
 .amount small{font-size:34px;font-weight:600;color:var(--muted);letter-spacing:0;margin-left:6px}
 .chips{display:grid;grid-auto-flow:column;grid-template-rows:repeat(2,auto);gap:8px;overflow-x:auto;scrollbar-width:none;padding:2px 2px 4px;margin:0 -16px;padding-left:16px;padding-right:16px;scroll-padding:16px}
@@ -192,6 +197,7 @@ h2{font-size:15px;font-weight:600;color:var(--muted);margin:30px 0 10px}
       <div class="label" id="mLabel"></div>
       <button id="mNext" aria-label="Mese successivo">›</button>
     </div>
+    <div class="seg period" role="tablist" aria-label="Periodo"><button data-p="m" class="on">Mese</button><button data-p="y">Da inizio anno</button></div>
     <div id="meseBody"></div>
   </section>
 
@@ -237,6 +243,7 @@ h2{font-size:15px;font-weight:600;color:var(--muted);margin:30px 0 10px}
     <h2>Dati</h2>
     <div class="stack"><button class="btn danger" id="bReset">Cancella tutti i dati dell'app</button></div>
     <p class="hint">I dati restano solo su questo iPhone, dentro l'app. Esporta l'Excel ogni tanto dalla scheda Excel: è anche il tuo backup.</p>
+    <p class="hint" style="margin-top:18px">Versione 4</p>
   </section>
 </main>
 
@@ -253,7 +260,12 @@ h2{font-size:15px;font-weight:600;color:var(--muted);margin:30px 0 10px}
   <div class="in">
     <header><button id="shClose">Annulla</button><h1 id="shTitle">Nuovo movimento</h1><button class="r hidden" id="shDel">Elimina</button></header>
     <div class="seg" role="tablist"><button id="tSpesa" class="on">Spesa</button><button id="tEntrata">Entrata</button></div>
-    <div class="amount" id="amt" aria-live="polite"></div>
+    <div class="amtrow">
+      <button class="sign" id="bSign" aria-pressed="false" aria-label="Importo negativo">−</button>
+      <div class="amount" id="amt" aria-live="polite"></div>
+      <span aria-hidden="true"></span>
+    </div>
+    <p class="neghint" id="negHint"></p>
     <div class="chips" id="chips"></div>
     <div class="sugg" id="sugg"></div>
     <div class="meta">

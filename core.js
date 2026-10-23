@@ -58,14 +58,17 @@
     if (tipo === 'Spesa' && budget > 0 && eff / budget >= 0.9) return 'Attenzione';
     return 'OK';
   }
-  function monthStats(state, year, month) {
-    const pref = `${year}-${String(month).padStart(2, '0')}`;
+  // Somma algebrica: un importo negativo (rientro, storno, disinvestimento) riduce il totale della sua categoria.
+  function periodStats(state, year, mFrom, mTo) {
     const eff = {};
     for (const m of state.movimenti) {
-      if (m.data && m.data.startsWith(pref)) eff[m.categoria] = round2((eff[m.categoria] || 0) + Number(m.importo));
+      if (!m.data || +m.data.slice(0, 4) !== year) continue;
+      const mm = +m.data.slice(5, 7);
+      if (mm >= mFrom && mm <= mTo) eff[m.categoria] = round2((eff[m.categoria] || 0) + Number(m.importo));
     }
     const righe = state.categorie.map(c => {
-      const b = budgetFor(state, c.nome, year, month), e = eff[c.nome] || 0;
+      let b = 0; for (let k = mFrom; k <= mTo; k++) b += budgetFor(state, c.nome, year, k);
+      b = round2(b); const e = eff[c.nome] || 0;
       return { nome: c.nome, tipo: c.tipo, budget: b, effettivo: e,
         scostamento: round2(c.tipo === 'Entrata' ? e - b : b - e), pct: b ? e / b : null, stato: stato(c.tipo, b, e) };
     });
@@ -77,6 +80,7 @@
       uscitePrev: sum('Spesa', 'budget'), usciteEff: sum('Spesa', 'effettivo')
     };
   }
+  const monthStats = (state, year, month) => periodStats(state, year, month, month);
 
   /* ---------------- date ---------------- */
   function isoFromDate(d) { // Date letta da ExcelJS (UTC)
@@ -203,7 +207,6 @@
       const data = parseDateAny(dRaw), importo = parseNum(iRaw);
       if (!data) { warnings.push(`Movimenti riga ${r}: data mancante o non valida, riga ignorata.`); continue; }
       if (importo === null) { warnings.push(`Movimenti riga ${r}: importo mancante o non numerico, riga ignorata.`); continue; }
-      if (importo < 0) warnings.push(`Movimenti riga ${r}: importo negativo (${importo}). Il file usa importi senza segno.`);
       if (!cat) warnings.push(`Movimenti riga ${r}: categoria vuota.`);
       else if (!categorie.some(c => c.nome === cat)) warnings.push(`Movimenti riga ${r}: categoria "${cat}" non presente nelle Impostazioni.`);
       const mo = { id: id || null, data, categoria: cat, descrizione: desc, importo: round2(importo) };
@@ -355,6 +358,6 @@
   }
 
   const Core = { MESI, MESI_BREVI, MAX_CAT, MAX_FISSE, emptyState, uid, round2, budgetFor, defaultBudget, fisseFor, tipoOf,
-    monthStats, parseWorkbook, diffImport, applyImport, buildFromTemplate, parseDateAny, parseNum };
+    monthStats, periodStats, parseWorkbook, diffImport, applyImport, buildFromTemplate, parseDateAny, parseNum };
   if (typeof module !== 'undefined' && module.exports) module.exports = Core; else root.Core = Core;
 })(typeof window !== 'undefined' ? window : this);
