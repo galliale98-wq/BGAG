@@ -40,6 +40,8 @@
     const c = state.categorie.find(x => x.nome === cat);
     return round2((c && Number(c.budget)) || 0) + fisseFor(state, cat);
   }
+  // Le categorie di tipo Investimento hanno un piano (budget) facoltativo e restano fuori da entrate, uscite e risparmio.
+  const TIPI = ['Entrata', 'Spesa', 'Investimento'];
   function budgetFor(state, cat, year, month) {
     const o = state.override[cat];
     if (year === state.anno && o && Object.prototype.hasOwnProperty.call(o, month)) {
@@ -52,7 +54,7 @@
     return c ? c.tipo : null;
   }
   function stato(tipo, budget, eff) {
-    if (budget === 0 && eff === 0) return '—';
+    if (tipo === 'Investimento' || (budget === 0 && eff === 0)) return '—';
     const sc = tipo === 'Entrata' ? eff - budget : budget - eff;
     if (sc < 0) return tipo === 'Entrata' ? 'Sotto le attese' : 'Sforato';
     if (tipo === 'Spesa' && budget > 0 && eff / budget >= 0.9) return 'Attenzione';
@@ -77,10 +79,32 @@
     return {
       righe, orfani,
       entratePrev: sum('Entrata', 'budget'), entrateEff: sum('Entrata', 'effettivo'),
-      uscitePrev: sum('Spesa', 'budget'), usciteEff: sum('Spesa', 'effettivo')
+      uscitePrev: sum('Spesa', 'budget'), usciteEff: sum('Spesa', 'effettivo'),
+      investEff: sum('Investimento', 'effettivo'), investPrev: sum('Investimento', 'budget')
     };
   }
   const monthStats = (state, year, month) => periodStats(state, year, month, month);
+
+  // Analisi Year to date: considera solo i mesi dell'anno in cui c'è almeno una spesa registrata.
+  function yearAnalysis(state, year) {
+    const has = new Set();
+    for (const x of state.movimenti) {
+      if (x.data && +x.data.slice(0, 4) === year && tipoOf(state, x.categoria) === 'Spesa') has.add(+x.data.slice(5, 7));
+    }
+    const months = [...has].sort((a, b) => a - b);
+    const perMonth = months.map(m => { const s = monthStats(state, year, m);
+      return { m, uscitePrev: s.uscitePrev, usciteEff: s.usciteEff, entratePrev: s.entratePrev, entrateEff: s.entrateEff, investEff: s.investEff, investPrev: s.investPrev, righe: s.righe }; });
+    const sum = (k) => round2(perMonth.reduce((a, p) => a + p[k], 0));
+    const cat = state.categorie.map((c, i) => {
+      const b = round2(perMonth.reduce((a, p) => a + p.righe[i].budget, 0));
+      const e = round2(perMonth.reduce((a, p) => a + p.righe[i].effettivo, 0));
+      return { nome: c.nome, tipo: c.tipo, budget: b, effettivo: e, stato: stato(c.tipo, b, e) };
+    });
+    // investimenti misurati sullo stesso periodo (mesi con spese), senza budget
+    const invCat = cat.filter(c => c.tipo === 'Investimento').map(c => ({ nome: c.nome, budget: c.budget, effettivo: c.effettivo }));
+    return { year, months, perMonth, cat, invCat,
+      tot: { uscitePrev: sum('uscitePrev'), usciteEff: sum('usciteEff'), entratePrev: sum('entratePrev'), entrateEff: sum('entrateEff'), investEff: sum('investEff'), investPrev: sum('investPrev') } };
+  }
 
   /* ---------------- date ---------------- */
   function isoFromDate(d) { // Date letta da ExcelJS (UTC)
@@ -149,7 +173,7 @@
       if (!nome) continue;
       if (categorie.some(c => c.nome === nome)) { warnings.push(`Impostazioni riga ${r}: categoria "${nome}" duplicata, ignorata.`); continue; }
       let tipo = cellText(imp.getCell(r, 3));
-      if (tipo !== 'Entrata' && tipo !== 'Spesa') { warnings.push(`Impostazioni riga ${r}: tipo di "${nome}" non valido, impostato a Spesa.`); tipo = 'Spesa'; }
+      if (!TIPI.includes(tipo)) { warnings.push(`Impostazioni riga ${r}: tipo di "${nome}" non valido, impostato a Spesa.`); tipo = 'Spesa'; }
       categorie.push({ nome, tipo, budget: parseNum(cellRaw(imp.getCell(r, 4))) });
       rowOfCat[nome] = r;
     }
@@ -242,7 +266,9 @@
       }
     }
     const soloApp = state.movimenti.filter(m => !fileIds.has(m.id));
-    const pick = (s) => JSON.stringify({ anno: s.anno, categorie: s.categorie, fisse: s.fisse, override: s.override });
+    const pick = (s) => {
+      return JSON.stringify({ anno: s.anno, categorie: s.categorie, fisse: s.fisse, override: s.override || {} });
+    };
     return { nuovi, modificati, uguali, soloApp, impostazioniCambiate: pick(state) !== pick(parsed) };
   }
 
@@ -254,8 +280,11 @@
       if (dopo.evid) t.evid = true; else delete t.evid;
     }
     if (opt.eliminaSoloApp) { const del = new Set(diff.soloApp.map(m => m.id)); s.movimenti = s.movimenti.filter(m => !del.has(m.id)); }
+    // un movimento che arriva dal file con il suo ID lo conserva: così l'export successivo resta identico al file
+    const usati = new Set(s.movimenti.map(m => m.id));
     if (opt.nuovi) for (const fm of diff.nuovi) {
-      const m = { id: uid(), data: fm.data, categoria: fm.categoria, descrizione: fm.descrizione, importo: fm.importo };
+      const id = fm.id && !usati.has(fm.id) ? fm.id : uid(); usati.add(id);
+      const m = { id, data: fm.data, categoria: fm.categoria, descrizione: fm.descrizione, importo: fm.importo };
       if (fm.evid) m.evid = true; s.movimenti.push(m);
     }
     return s;
@@ -305,11 +334,12 @@
     if (!/<sheet name="Movimenti" sheetId="1" r:id="rId1"\/><sheet name="Impostazioni"/.test(wb)) throw new Error('Stampo Excel non riconosciuto.');
 
     /* Movimenti, nell'ordine in cui sono stati inseriti */
-    const movs = state.movimenti, n = movs.length, last = Math.max(504, 4 + n);
+    const mvTpl = await rd(S_MOV), base = +(mvTpl.match(/<dimension ref="B1:I(\d+)"\/>/) || [0, 504])[1];
+    const movs = state.movimenti, n = movs.length, last = Math.max(base, 4 + n);
     const up = new Map(), extra = [];
     movs.forEach((m, i) => {
       const r = 5 + i;
-      if (r <= 504) {
+      if (r <= base) {
         up.set('B' + r, N(serial(m.data))); up.set('C' + r, txt(m.categoria)); up.set('D' + r, descCell(m));
         up.set('E' + r, N(round2(m.importo))); up.set('I' + r, txt(m.id));
       } else {
@@ -320,12 +350,12 @@
           cellXml('H' + r, ' s="7"', Fm(movH(r))) + cellXml('I' + r, '', txt(m.id)) + '</row>');
       }
     });
-    let mv = setCells(await rd(S_MOV), up);
+    let mv = setCells(mvTpl, up);
     if (extra.length) {
       mv = mv.replace('</sheetData>', extra.join('') + '</sheetData>')
-        .replace('<dimension ref="B1:I504"/>', `<dimension ref="B1:I${last}"/>`)
-        .replace('<autoFilter ref="B4:I504"', `<autoFilter ref="B4:I${last}"`)
-        .replace('sqref="H5:H504"', `sqref="H5:H${last}"`).replace('sqref="C5:C504"', `sqref="C5:C${last}"`);
+        .replace(`<dimension ref="B1:I${base}"/>`, `<dimension ref="B1:I${last}"/>`)
+        .replace(`<autoFilter ref="B4:I${base}"`, `<autoFilter ref="B4:I${last}"`)
+        .replace(`sqref="H5:H${base}"`, `sqref="H5:H${last}"`).replace(`sqref="C5:C${base}"`, `sqref="C5:C${last}"`);
     }
     zip.file(S_MOV, mv);
 
@@ -353,11 +383,11 @@
     /* Riepilogo: si apre sul mese corrente */
     zip.file(S_RIE, setCells(await rd(S_RIE), new Map([['C4', Str(MESI[now.getMonth()])]])));
 
-    if (extra.length) zip.file('xl/workbook.xml', wb.replace('Movimenti!$B$4:$I$504', `Movimenti!$B$4:$I$${last}`));
+    if (extra.length) zip.file('xl/workbook.xml', wb.replace(`Movimenti!$B$4:$I$${base}`, `Movimenti!$B$4:$I$${last}`));
     return zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE', compressionOptions: { level: 6 } });
   }
 
-  const Core = { MESI, MESI_BREVI, MAX_CAT, MAX_FISSE, emptyState, uid, round2, budgetFor, defaultBudget, fisseFor, tipoOf,
-    monthStats, periodStats, parseWorkbook, diffImport, applyImport, buildFromTemplate, parseDateAny, parseNum };
+  const Core = { TIPI, MESI, MESI_BREVI, MAX_CAT, MAX_FISSE, emptyState, uid, round2, budgetFor, defaultBudget, fisseFor, tipoOf,
+    monthStats, periodStats, yearAnalysis, parseWorkbook, diffImport, applyImport, buildFromTemplate, parseDateAny, parseNum };
   if (typeof module !== 'undefined' && module.exports) module.exports = Core; else root.Core = Core;
 })(typeof window !== 'undefined' ? window : this);

@@ -3,7 +3,7 @@
   const KEY = 'budget.v1';
   const $ = (s) => document.querySelector(s);
   const eur = new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' });
-  const E = (n) => eur.format(n || 0);
+  const E = (n) => { const v = Math.round((Number(n) || 0) * 100) / 100, [i, d] = Math.abs(v).toFixed(2).split('.'); return `${v < 0 ? '-' : ''}${i.replace(/\B(?=(\d{3})+(?!\d))/g, '.')},${d} €`; };
   const esc = (t) => String(t ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   const today = () => iso(new Date());
@@ -83,7 +83,7 @@
     const catRow = (r) => {
       const p = r.budget > 0 ? r.effettivo / r.budget : null;
       const cls = r.tipo === 'Spesa' ? (p === null ? (r.effettivo > 0 ? 'over' : '') : p > 1 ? 'over' : p >= 0.9 ? 'warn' : '') : '';
-      const flag = r.tipo === 'Spesa' && cls === 'over' ? '<span class="flag over">Sforato</span>' : cls === 'warn' ? '<span class="flag warn">Quasi al limite</span>' : '';
+      const flag = r.tipo === 'Spesa' && cls === 'over' ? '<span class="flag over">Sforato</span>' : cls === 'warn' ? '<span class="flag warn">Al limite</span>' : '';
       return `<button class="cat" style="display:block;width:100%;text-align:left" data-cat="${esc(r.nome)}">
         <div class="row"><span class="n">${esc(r.nome)}${flag}</span><span class="v"><b>${E(r.effettivo)}</b> / ${E(r.budget)}</span></div>
         <div class="gauge ${cls}"><i style="width:${Math.max(0, Math.min(100, (p === null ? (r.effettivo > 0 ? 1 : 0) : p) * 100)).toFixed(1)}%"></i></div></button>`;
@@ -92,6 +92,10 @@
     const en = st.righe.filter((r) => r.tipo === 'Entrata' && (r.budget > 0 || r.effettivo > 0));
     if (sp.length) html += `<h2>Uscite per categoria</h2><div class="catlist">${sp.map(catRow).join('')}</div>`;
     if (en.length) html += `<h2>Entrate</h2><div class="catlist">${en.map(catRow).join('')}</div>`;
+    const inv = st.righe.filter((r) => r.tipo === 'Investimento' && (r.effettivo !== 0 || r.budget > 0));
+    if (inv.length) html += `<h2>Investimenti ${ytd ? 'da inizio anno' : 'del mese'}: ${E(st.investEff)}${st.investPrev > 0 ? ` su ${E(st.investPrev)} di piano` : ''}</h2><div class="catlist inv">${inv.map((r) =>
+      `<button class="cat" style="display:block;width:100%;text-align:left" data-cat="${esc(r.nome)}"><div class="row" style="margin:0"><span class="n">${esc(r.nome)}</span><span class="v num"><b>${E(r.effettivo)}</b>${r.budget > 0 ? ` / piano ${E(r.budget)}` : ''}</span></div></button>`).join('')}</div>
+      <p class="hint">Fuori da entrate, uscite e risparmio: il piano si confronta solo con l'investito.</p>`;
     if (st.orfani.length) html += `<h2>Da sistemare</h2><div class="catlist">${st.orfani.map((o) => `<button class="cat" style="display:block;width:100%;text-align:left" data-cat="${esc(o)}"><div class="row"><span class="n">${esc(o)}<span class="flag over">Categoria inesistente</span></span></div></button>`).join('')}</div>`;
     body.innerHTML = html;
   }
@@ -117,7 +121,7 @@
     for (const m of rows) { const k = m.data.slice(0, 7); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(m); }
     let html = '';
     for (const [k, list] of groups) {
-      const out = Core.round2(list.filter((m) => Core.tipoOf(S, m.categoria) !== 'Entrata').reduce((s, m) => s + m.importo, 0));
+      const out = Core.round2(list.filter((m) => Core.tipoOf(S, m.categoria) === 'Spesa').reduce((s, m) => s + m.importo, 0));
       html += `<div class="group"><h3><span>${Core.MESI[+k.slice(5) - 1]} ${k.slice(0, 4)}</span><span class="num">Uscite ${E(out)}</span></h3><div class="list">`;
       for (const m of list) {
         const ent = Core.tipoOf(S, m.categoria) === 'Entrata';
@@ -162,6 +166,7 @@
   function renderEntry() {
     $('#tSpesa').classList.toggle('on', ent.tipo === 'Spesa');
     $('#tEntrata').classList.toggle('on', ent.tipo === 'Entrata');
+    $('#tInvest').classList.toggle('on', ent.tipo === 'Investimento');
     renderAmt();
     const u = usage();
     let cats = S.categorie.map((c, i) => [c, i]).filter(([c]) => c.tipo === ent.tipo);
@@ -175,7 +180,8 @@
   function renderAmt() {
     const el = $('#amt'), sg = ent.neg ? '−' : '';
     $('#bSign').setAttribute('aria-pressed', ent.neg ? 'true' : 'false');
-    $('#negHint').textContent = !ent.neg ? '' : ent.tipo === 'Entrata' ? 'Negativo: riduce le entrate della categoria' : 'Negativo: rientro, riduce le uscite della categoria';
+    $('#negHint').textContent = !ent.neg ? '' : ent.tipo === 'Entrata' ? 'Negativo: riduce le entrate della categoria'
+      : ent.tipo === 'Investimento' ? 'Negativo: disinvestimento o plusvalenza, riduce l\'investito' : 'Negativo: rientro, riduce le uscite della categoria';
     if (!ent.amt) { el.innerHTML = `<span class="ph">${sg}0</span><small>€</small>`; return; }
     const [i, d] = ent.amt.split(',');
     const intTxt = Number(i || '0').toLocaleString('it-IT');
@@ -206,11 +212,12 @@
   function validate() {
     const ok = amtValue() > 0 && !!ent.cat;
     const b = $('#shSave'); b.disabled = !ok;
-    b.textContent = ent.id ? 'Salva modifiche' : ent.tipo === 'Entrata' ? 'Salva entrata' : 'Salva spesa';
+    b.textContent = ent.id ? 'Salva modifiche' : ent.tipo === 'Entrata' ? 'Salva entrata' : ent.tipo === 'Investimento' ? 'Salva investimento' : 'Salva spesa';
   }
   $('#bSign').onclick = () => { ent.neg = !ent.neg; renderAmt(); };
   $('#tSpesa').onclick = () => { if (ent.tipo !== 'Spesa') { ent.tipo = 'Spesa'; ent.cat = null; renderEntry(); } };
   $('#tEntrata').onclick = () => { if (ent.tipo !== 'Entrata') { ent.tipo = 'Entrata'; ent.cat = null; renderEntry(); } };
+  $('#tInvest').onclick = () => { if (ent.tipo !== 'Investimento') { ent.tipo = 'Investimento'; ent.cat = null; renderEntry(); } };
   $('#chips').addEventListener('click', (e) => {
     const c = e.target.closest('[data-c]'); if (!c) return;
     ent.cat = c.dataset.c;
@@ -251,7 +258,7 @@
     } else {
       const nm = { id: Core.uid(), data: ent.date, categoria: ent.cat, descrizione: desc, importo: v };
       if (ent.evid) nm.evid = true; S.movimenti.push(nm);
-      msg = ent.tipo === 'Entrata' ? 'Entrata salvata' : 'Spesa salvata';
+      msg = ent.tipo === 'Entrata' ? 'Entrata salvata' : ent.tipo === 'Investimento' ? 'Investimento salvato' : 'Spesa salvata';
     }
     save(); closeEntry(); renderAll(); toast(`${msg}: ${E(v)}`);
   };
@@ -260,6 +267,120 @@
     S.movimenti = S.movimenti.filter((m) => m.id !== ent.id);
     save(); closeEntry(); renderAll(); toast('Movimento eliminato');
   };
+
+
+  /* ---------- vista Analisi (Year to date sui soli mesi con spese) ---------- */
+  const thisYear = now.getFullYear();
+  let anaY = S.movimenti.some((m) => m.data && m.data.startsWith(String(thisYear))) ? thisYear : S.anno;
+  $('#aPrev').onclick = () => { anaY--; renderAna(); };
+  $('#aNext').onclick = () => { anaY++; renderAna(); };
+
+  const K = (v) => { const a = Math.abs(v); const t = a >= 10000 ? Math.round(a / 1000) + 'k' : a >= 1000 ? (a / 1000).toFixed(1).replace('.', ',') + 'k' : String(Math.round(a)); return (v < 0 ? '−' : '') + t; };
+  const niceMax = (v) => { if (v <= 0) return 1; const p = Math.pow(10, Math.floor(Math.log10(v))); const f = v / p; return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * p; };
+  function periodText(months) {
+    const runs = []; let st = months[0], pr = months[0];
+    for (let i = 1; i <= months.length; i++) {
+      const m = months[i];
+      if (m === pr + 1) { pr = m; continue; }
+      runs.push(st === pr ? Core.MESI[st - 1].toLowerCase() : `${Core.MESI[st - 1].toLowerCase()}–${Core.MESI[pr - 1].toLowerCase()}`);
+      st = pr = m;
+    }
+    return runs.join(', ');
+  }
+
+  // barre raggruppate con asse zero (gestisce anche valori negativi)
+  function barChart(labels, series, title) {
+    const W = 340, H = 190, L = 34, B = 20, T = 16, n = labels.length;
+    const all = series.flatMap((s) => s.values).concat(0);
+    const hi = niceMax(Math.max(...all)), lo = Math.min(...all) < 0 ? -niceMax(-Math.min(...all)) : 0;
+    const y = (v) => T + (H - T - B) * (hi - v) / (hi - lo);
+    const gw = (W - L) / n, bw = Math.min(26, (gw * 0.7) / series.length);
+    let g = '';
+    for (const t of [lo, lo === 0 ? hi / 2 : 0, hi]) g += `<line class="grid" x1="${L}" x2="${W}" y1="${y(t)}" y2="${y(t)}"/><text class="ax" x="${L - 5}" y="${y(t) + 3}" text-anchor="end">${K(t)}</text>`;
+    labels.forEach((lab, i) => {
+      const cx = L + gw * i + gw / 2, x0 = cx - (bw * series.length) / 2;
+      series.forEach((s, j) => {
+        const v = s.values[i], top = Math.min(y(v), y(0)), hgt = Math.max(1, Math.abs(y(v) - y(0)));
+        const col = typeof s.color === 'function' ? s.color(v, i) : s.color;
+        g += `<rect x="${x0 + j * bw + 1}" y="${top}" width="${bw - 2}" height="${hgt}" rx="3" style="fill:${col}"/>`;
+        if (n <= 6) g += `<text class="val" x="${x0 + j * bw + bw / 2}" y="${v >= 0 ? top - 4 : top + hgt + 11}" text-anchor="middle">${K(v)}</text>`;
+      });
+      g += `<text class="ax" x="${cx}" y="${H - 5}" text-anchor="middle">${lab}</text>`;
+    });
+    const leg = series.length > 1 ? `<div class="legend">${series.map((s) => `<span><i style="background:${s.legend || s.color}"></i>${s.name}</span>`).join('')}</div>` : '';
+    return `<h2>${title}</h2><div class="chart">${leg}<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(title)}">${g}</svg></div>`;
+  }
+
+  function lineChart(labels, series, title) {
+    const W = 340, H = 180, L = 34, B = 20, T = 16, n = labels.length;
+    const hi = niceMax(Math.max(...series.flatMap((s) => s.values), 1));
+    const y = (v) => T + (H - T - B) * (hi - Math.max(0, v)) / hi;
+    const x = (i) => (n === 1 ? L + (W - L) / 2 : L + 14 + (W - L - 28) * i / (n - 1));
+    let g = '';
+    for (const t of [0, hi / 2, hi]) g += `<line class="grid" x1="${L}" x2="${W}" y1="${y(t)}" y2="${y(t)}"/><text class="ax" x="${L - 5}" y="${y(t) + 3}" text-anchor="end">${K(t)}</text>`;
+    labels.forEach((lab, i) => { g += `<text class="ax" x="${x(i)}" y="${H - 5}" text-anchor="middle">${lab}</text>`; });
+    series.forEach((s) => {
+      g += `<polyline points="${s.values.map((v, i) => `${x(i)},${y(v)}`).join(' ')}" style="fill:none;stroke:${s.color};stroke-width:2.5;stroke-linejoin:round;stroke-linecap:round${s.dash ? ';stroke-dasharray:5 4' : ''}"/>`;
+      s.values.forEach((v, i) => { g += `<circle cx="${x(i)}" cy="${y(v)}" r="3.5" style="fill:${s.color}"/>`; });
+      const lv = s.values[n - 1]; g += `<text class="val" x="${x(n - 1)}" y="${y(lv) - 8}" text-anchor="middle">${K(lv)}</text>`;
+    });
+    const leg = `<div class="legend">${series.map((s) => `<span><i style="background:${s.color}"></i>${s.name}</span>`).join('')}</div>`;
+    return `<h2>${title}</h2><div class="chart">${leg}<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(title)}">${g}</svg></div>`;
+  }
+
+  function renderAna() {
+    $('#aLabel').textContent = `Year to date ${anaY}`;
+    const a = Core.yearAnalysis(S, anaY), body = $('#anaBody');
+    if (!a.months.length) {
+      body.innerHTML = `<div class="empty"><p>Nessuna spesa registrata nel ${anaY}. L'analisi considera solo i mesi con almeno una spesa.</p></div>`;
+      return;
+    }
+    const n = a.months.length, t = a.tot;
+    const res = Core.round2(t.uscitePrev - t.usciteEff), pct = t.uscitePrev > 0 ? t.usciteEff / t.uscitePrev : null;
+    const risp = Core.round2(t.entrateEff - t.usciteEff), tasso = t.entrateEff > 0 ? risp / t.entrateEff : null;
+    const spese = a.cat.filter((c) => c.tipo === 'Spesa');
+    const top = spese.filter((c) => c.effettivo > 0).sort((x, y) => y.effettivo - x.effettivo)[0];
+    const inCorso = anaY === thisYear && a.months.includes(now.getMonth() + 1);
+    const P = (v) => (v === null ? '—' : `${Math.round(v * 100)}%`);
+    let html = `<p class="period-note">Periodo analizzato: <b>${periodText(a.months)}</b> (${n} ${n === 1 ? 'mese' : 'mesi'} con spese)${inCorso ? `. ${Core.MESI[now.getMonth()]} è ancora in corso, quindi il confronto con il suo budget è parziale.` : '.'}</p>`;
+    html += `<div class="kpis">
+      <div class="kpi"><span>Uscite</span><strong>${E(t.usciteEff)}</strong><small>budget ${E(t.uscitePrev)}</small></div>
+      <div class="kpi"><span>Utilizzo budget</span><strong class="${pct !== null && pct > 1 ? 'neg' : ''}">${P(pct)}</strong><small class="${res < 0 ? 'neg' : ''}">${res < 0 ? 'sforato di ' + E(-res) : 'residuo ' + E(res)}</small></div>
+      <div class="kpi"><span>Entrate</span><strong>${E(t.entrateEff)}</strong><small>previste ${E(t.entratePrev)}</small></div>
+      <div class="kpi"><span>Risparmio</span><strong class="${risp < 0 ? 'neg' : ''}">${E(risp)}</strong><small>tasso di risparmio ${P(tasso)}</small></div>
+      <div class="kpi"><span>Uscite medie al mese</span><strong>${E(t.usciteEff / n)}</strong><small>budget ${E(t.uscitePrev / n)}</small></div>
+      <div class="kpi"><span>Prima voce di spesa</span><strong class="kname">${top ? esc(top.nome) : '—'}</strong><small>${top ? `${E(top.effettivo)} (${P(t.usciteEff > 0 ? top.effettivo / t.usciteEff : null)} delle uscite)` : ''}</small></div>
+    </div>`;
+    const labs = a.months.map((m) => Core.MESI_BREVI[m - 1]);
+    html += barChart(labs, [
+      { name: 'Effettivo', legend: 'var(--ledger)', values: a.perMonth.map((p) => p.usciteEff), color: (v, i) => (a.perMonth[i] && a.perMonth[i].usciteEff > a.perMonth[i].uscitePrev && a.perMonth[i].uscitePrev > 0 ? 'var(--brick)' : 'var(--ledger)') },
+      { name: 'Budget', values: a.perMonth.map((p) => p.uscitePrev), color: 'var(--line)' }
+    ], 'Uscite per mese');
+    html += barChart(labs, [{ name: 'Risparmio', legend: 'var(--ledger)', values: a.perMonth.map((p) => Core.round2(p.entrateEff - p.usciteEff)), color: (v) => (v < 0 ? 'var(--brick)' : 'var(--ledger)') }], 'Risparmio per mese (entrate − uscite)');
+    let ce = 0, cb = 0;
+    html += lineChart(labs, [
+      { name: 'Uscite cumulate', values: a.perMonth.map((p) => (ce = Core.round2(ce + p.usciteEff))), color: 'var(--ledger)' },
+      { name: 'Budget cumulato', values: a.perMonth.map((p) => (cb = Core.round2(cb + p.uscitePrev))), color: 'var(--muted)', dash: true }
+    ], 'Uscite cumulate e budget');
+    const rows = spese.filter((c) => c.effettivo !== 0 || c.budget > 0).sort((x, y) => y.effettivo - x.effettivo);
+    const scale = Math.max(1, ...rows.map((r) => Math.max(r.effettivo, r.budget)));
+    html += `<h2>Uscite per categoria</h2><div class="chart" style="padding:4px 14px"><div class="legend" style="margin:10px 0 2px"><span><i style="background:var(--ledger)"></i>Effettivo</span><span><i style="background:var(--ink);opacity:.55;width:3px"></i>Budget</span></div>${rows.map((r) => {
+      const p = r.budget > 0 ? r.effettivo / r.budget : null;
+      const cls = p === null ? (r.effettivo > 0 ? 'over' : '') : p > 1 ? 'over' : p >= 0.9 ? 'warn' : '';
+      return `<div class="hb"><div class="row"><span>${esc(r.nome)}</span><span class="v"><b>${E(r.effettivo)}</b> / ${E(r.budget)}</span></div>
+        <div class="track"><i class="${cls}" style="width:${Math.max(0, r.effettivo / scale * 100).toFixed(1)}%"></i>${r.budget > 0 ? `<u style="left:calc(${(r.budget / scale * 100).toFixed(1)}% - 1px)"></u>` : ''}</div></div>`;
+    }).join('')}</div>`;
+    if (a.invCat.some((c) => c.effettivo !== 0 || c.budget > 0)) {
+      html += `<h2>Investimenti ${anaY}</h2><p class="period-note" style="margin:-4px 0 12px">Stesso periodo, fuori dai KPI sopra: l'investito si confronta solo con il piano.</p>
+        <div class="kpis"><div class="kpi"><span>Investito da inizio anno</span><strong>${E(t.investEff)}</strong><small>${t.investPrev > 0 ? `piano ${E(t.investPrev)}` : 'nel periodo analizzato'}</small></div>
+        <div class="kpi"><span>Risparmio meno investito</span><strong class="${risp - t.investEff < 0 ? 'neg' : ''}">${E(risp - t.investEff)}</strong><small>stesso periodo</small></div></div>`;
+      html += barChart(labs, [{ name: 'Investito', legend: 'var(--amber)', values: a.perMonth.map((p) => p.investEff), color: (v) => (v < 0 ? 'var(--brick)' : 'var(--amber)') },
+        { name: 'Piano', values: a.perMonth.map((p) => p.investPrev), color: 'var(--line)' }], 'Investito per mese e piano');
+      html += `<div class="chart" style="padding:4px 14px;margin-top:10px">${a.invCat.filter((c) => c.effettivo !== 0 || c.budget > 0).map((c) =>
+        `<div class="hb"><div class="row" style="margin:0"><span>${esc(c.nome)}</span><span class="v"><b>${E(c.effettivo)}</b>${c.budget > 0 ? ` / piano ${E(c.budget)}` : ''}</span></div></div>`).join('')}</div>`;
+    }
+    body.innerHTML = html;
+  }
 
   /* ---------- impostazioni ---------- */
   let ovSel = null;
@@ -270,8 +391,8 @@
     // categorie
     let h = S.categorie.map((c, i) => `<div class="ed" data-i="${i}">
       <div class="l1"><input data-k="nome" value="${esc(c.nome)}" aria-label="Nome categoria"><button class="x" data-act="del" aria-label="Elimina ${esc(c.nome)}">×</button></div>
-      <div class="l2"><select data-k="tipo" aria-label="Tipo"><option ${c.tipo === 'Spesa' ? 'selected' : ''}>Spesa</option><option ${c.tipo === 'Entrata' ? 'selected' : ''}>Entrata</option></select>
-      <input data-k="budget" class="num" inputmode="decimal" placeholder="Budget €" value="${c.budget === null || c.budget === undefined ? '' : String(c.budget).replace('.', ',')}" aria-label="Budget variabile mensile">
+      <div class="l2"><select data-k="tipo" aria-label="Tipo">${Core.TIPI.map((t) => `<option ${c.tipo === t ? 'selected' : ''}>${t}</option>`).join('')}</select>
+      <input data-k="budget" class="num" inputmode="decimal" placeholder="${c.tipo === 'Investimento' ? 'Piano €' : 'Budget €'}" value="${c.budget === null || c.budget === undefined ? '' : String(c.budget).replace('.', ',')}" aria-label="${c.tipo === 'Investimento' ? 'Piano di investimento mensile' : 'Budget variabile mensile'}">
       <span class="hint num" style="margin:0;white-space:nowrap">${Core.fisseFor(S, c.nome) ? '+ fisse ' + E(Core.fisseFor(S, c.nome)) : ''}</span></div></div>`).join('');
     h += S.categorie.length < Core.MAX_CAT ? '<button class="addrow" data-act="add">Aggiungi categoria</button>' : `<p class="hint">Massimo ${Core.MAX_CAT} categorie (limite del file Excel).</p>`;
     $('#catEd').innerHTML = h;
@@ -285,7 +406,8 @@
     f += S.fisse.length < Core.MAX_FISSE ? '<button class="addrow" data-act="add">Aggiungi spesa fissa</button>' : `<p class="hint">Massimo ${Core.MAX_FISSE} spese fisse (limite del file Excel).</p>`;
     $('#fixEd').innerHTML = f;
     // budget per mese
-    if (!ovSel || !S.categorie.some((c) => c.nome === ovSel)) ovSel = S.categorie[0] ? S.categorie[0].nome : null;
+    const budCats = S.categorie;
+    if (!ovSel || !budCats.some((c) => c.nome === ovSel)) ovSel = budCats[0] ? budCats[0].nome : null;
     $('#ovCat').innerHTML = S.categorie.map((c) => `<option ${c.nome === ovSel ? 'selected' : ''}>${esc(c.nome)}</option>`).join('');
     renderOv();
   }
@@ -405,7 +527,7 @@
     catch (e) {
       if (e.name === 'AbortError') return;
       pending = file; btn.textContent = 'File pronto: tocca per salvarlo';
-      if (!$('#v-xls').classList.contains('on')) show('v-xls');
+      if (!$('#v-set').classList.contains('on')) show('v-set');
     }
   }
   $('#bExport').onclick = () => doExport();
@@ -455,7 +577,7 @@
   };
 
   /* ---------- avvio ---------- */
-  function renderAll() { renderMese(); renderMov(); renderSet(); }
+  function renderAll() { renderMese(); renderMov(); renderSet(); renderAna(); }
   renderAll();
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});
 })();
