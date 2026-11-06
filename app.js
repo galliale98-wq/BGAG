@@ -1,5 +1,24 @@
 (function () {
   'use strict';
+  const APP_V = '9';
+  const htmlV = (document.querySelector('meta[name="app-version"]') || {}).content;
+  if (htmlV !== APP_V) {
+    // pagina e codice di versioni diverse: svuoto la copia offline e ricarico una volta (i dati non vengono toccati)
+    if (!sessionStorage.getItem('budget-fix')) {
+      sessionStorage.setItem('budget-fix', '1');
+      (async () => {
+        try { const ks = await caches.keys(); await Promise.all(ks.map((k) => caches.delete(k))); } catch (e) { /* niente cache */ }
+        try { const rs = await navigator.serviceWorker.getRegistrations(); await Promise.all(rs.map((r) => r.update())); } catch (e) { /* niente service worker */ }
+        location.reload();
+      })();
+    } else {
+      document.body.insertAdjacentHTML('afterbegin', `<div style="margin:16px;padding:14px 16px;border-radius:14px;background:#F7EBD3;color:#3A2E18;font:15px/1.45 -apple-system,system-ui,sans-serif">
+        <b>Aggiornamento incompleto.</b> Sul sito i file dell'app non sono tutti della stessa versione (pagina ${htmlV || 'vecchia'}, codice ${APP_V}).
+        I tuoi dati sono al sicuro: ricarica su GitHub tutti i file dello zip, poi riapri l'app.</div>`);
+    }
+    return;
+  }
+  sessionStorage.removeItem('budget-fix');
   const KEY = 'budget.v1';
   const $ = (s) => document.querySelector(s);
   const eur = new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' });
